@@ -128,6 +128,12 @@ def _fetch_tree(owner: str, repo: str, headers: dict) -> list[dict]:
     elif response.status_code == 401:
         raise RepoFetchError("Authentication required. Set GITHUB_TOKEN for private repos.")
     elif response.status_code == 403:
+        # Check if it's rate limiting
+        remaining = response.headers.get('X-RateLimit-Remaining', '')
+        if remaining == '0':
+            raise RepoFetchError(
+                "GitHub rate limit exceeded. Set GITHUB_TOKEN in .env for higher limits."
+            )
         raise RepoFetchError("Access denied. Check your GITHUB_TOKEN permissions.")
     elif response.status_code != 200:
         raise RepoFetchError(f"GitHub API error: {response.status_code}")

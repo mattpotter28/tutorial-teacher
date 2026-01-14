@@ -1,14 +1,14 @@
 """Main CLI entry point for Tutorial Teacher."""
 
 import os
-import sys
 from enum import Enum
 
 import typer
 from dotenv import load_dotenv
 from rich.console import Console
-from rich.panel import Panel
+from rich.style import Style
 from rich.text import Text
+from rich.rule import Rule
 
 from .claude_client import ClaudeClient
 from .models import SessionMode
@@ -27,11 +27,38 @@ app = typer.Typer(
 )
 console = Console()
 
+# Color palette - muted, professional
+ACCENT = "#6366f1"  # Indigo
+DIM = "#6b7280"     # Gray
+SUCCESS = "#10b981" # Emerald
+
 
 class ModeChoice(str, Enum):
     """CLI mode choices."""
     FREE = "free"
     STEP = "step"
+
+
+def print_header() -> None:
+    """Print minimal header."""
+    console.print()
+    console.print("[bold]tutorial-teacher[/bold]", style=f"bold {ACCENT}")
+    console.print()
+
+
+def print_context(session, mode: str) -> None:
+    """Print compact context line."""
+    parts = []
+    parts.append(f"[bold]{session.format_duration()}[/bold]")
+    parts.append(f"[dim]•[/dim] {len(session.segments)} sections")
+    parts.append(f"[dim]•[/dim] {mode} mode")
+    if session.repo_url:
+        # Extract just repo name from URL
+        repo_name = session.repo_url.rstrip('/').split('/')[-1]
+        parts.append(f"[dim]•[/dim] [dim]repo:[/dim] {repo_name}")
+
+    console.print("  ".join(parts))
+    console.print()
 
 
 @app.command()
@@ -63,31 +90,21 @@ def main(
     """
     # Check for API key early
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        console.print(
-            Panel(
-                "[red]Error:[/red] ANTHROPIC_API_KEY environment variable not set.\n\n"
-                "Please set your API key:\n"
-                "  export ANTHROPIC_API_KEY=your-key-here\n\n"
-                "Or create a .env file with:\n"
-                "  ANTHROPIC_API_KEY=your-key-here",
-                title="Missing API Key",
-                border_style="red",
-            )
-        )
+        console.print()
+        console.print("[red]✗[/red] ANTHROPIC_API_KEY not set")
+        console.print()
+        console.print("[dim]Set your API key:[/dim]")
+        console.print("  export ANTHROPIC_API_KEY=sk-ant-...")
+        console.print()
         raise typer.Exit(1)
 
-    # Create session
-    console.print(f"\n[bold blue]Tutorial Teacher[/bold blue]\n")
-    console.print(f"Loading tutorial from: [cyan]{youtube_url}[/cyan]")
-    if repo:
-        console.print(f"With repo context: [cyan]{repo}[/cyan]")
-    console.print()
+    print_header()
 
     session_manager = SessionManager()
     session_mode = SessionMode.FREEFORM if mode == ModeChoice.FREE else SessionMode.STEP_THROUGH
 
-    # Fetch transcript
-    with console.status("[bold green]Fetching transcript..."):
+    # Fetch transcript with spinner
+    with console.status(f"[{DIM}]Loading...[/{DIM}]", spinner="dots"):
         try:
             session = session_manager.create_session(
                 video_url=youtube_url,
@@ -95,20 +112,21 @@ def main(
                 repo_url=repo,
             )
         except TranscriptError as e:
-            console.print(f"\n[red]Error:[/red] {e}")
+            console.print(f"[red]✗[/red] {e}")
             raise typer.Exit(1)
         except RepoFetchError as e:
-            console.print(f"\n[red]Repo Error:[/red] {e}")
+            console.print(f"[red]✗[/red] {e}")
             raise typer.Exit(1)
 
-    # Display session info
-    display_session_info(session)
+    # Display compact context
+    mode_name = "step-through" if mode == ModeChoice.STEP else "freeform"
+    print_context(session, mode_name)
 
     # Initialize Claude client
     try:
         claude_client = ClaudeClient()
     except ValueError as e:
-        console.print(f"\n[red]Error:[/red] {e}")
+        console.print(f"[red]✗[/red] {e}")
         raise typer.Exit(1)
 
     # Run the appropriate mode
@@ -117,30 +135,6 @@ def main(
     else:
         from .modes.step_through import run_step_through_mode
         run_step_through_mode(session, claude_client, console)
-
-
-def display_session_info(session) -> None:
-    """Display information about the loaded tutorial."""
-    info_text = Text()
-    info_text.append("Video ID: ", style="bold")
-    info_text.append(f"{session.video_id}\n")
-    info_text.append("Duration: ", style="bold")
-    info_text.append(f"{session.format_duration()}\n")
-    info_text.append("Segments: ", style="bold")
-    info_text.append(f"{len(session.segments)}")
-
-    if session.repo_url:
-        info_text.append("\n")
-        info_text.append("Repo: ", style="bold")
-        info_text.append(f"{session.repo_url}")
-
-    console.print(
-        Panel(
-            info_text,
-            title="[bold green]Tutorial Loaded[/bold green]",
-            border_style="green",
-        )
-    )
 
 
 if __name__ == "__main__":

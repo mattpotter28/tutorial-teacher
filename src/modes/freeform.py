@@ -4,67 +4,51 @@ from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.table import Table
 
 from ..claude_client import ClaudeClient
 from ..models import TutorialSession
 
+# Color palette
+ACCENT = "#6366f1"  # Indigo
+DIM = "#6b7280"     # Gray
 
-def display_help(console: Console) -> None:
-    """Display available commands."""
-    table = Table(title="Available Commands", show_header=True, header_style="bold cyan")
-    table.add_column("Command", style="green")
-    table.add_column("Description")
 
-    table.add_row("/help, /h", "Show this help message")
-    table.add_row("/segments, /s", "List all tutorial segments")
-    table.add_row("/segment <n>", "Show details for segment n (1-based)")
-    table.add_row("/clear", "Clear conversation history")
-    table.add_row("/quit, /q", "Exit the session")
-    table.add_row("", "")
-    table.add_row("[dim]any text[/dim]", "[dim]Ask a question about the tutorial[/dim]")
-
-    console.print(table)
+def show_help(console: Console) -> None:
+    """Display compact help."""
+    console.print()
+    console.print(f"[{DIM}]commands[/{DIM}]   [bold]/s[/bold] segments  [bold]/s N[/bold] show segment  [bold]/clear[/bold] reset  [bold]/q[/bold] quit")
+    console.print(f"[{DIM}]or just type a question about the tutorial[/{DIM}]")
     console.print()
 
 
-def display_segments(session: TutorialSession, console: Console) -> None:
-    """Display all tutorial segments."""
-    table = Table(title="Tutorial Segments", show_header=True, header_style="bold cyan")
-    table.add_column("#", style="bold", width=4)
-    table.add_column("Time Range", width=20)
-    table.add_column("Preview", overflow="ellipsis")
-
+def show_segments(session: TutorialSession, console: Console) -> None:
+    """Display compact segment list."""
+    console.print()
     for segment in session.segments:
-        preview = segment.transcript[:80] + "..." if len(segment.transcript) > 80 else segment.transcript
-        table.add_row(
-            str(segment.index + 1),
-            segment.format_time_range(),
-            preview,
-        )
-
-    console.print(table)
+        num = f"{segment.index + 1}".rjust(2)
+        preview = segment.transcript[:60].replace('\n', ' ')
+        if len(segment.transcript) > 60:
+            preview += "..."
+        console.print(f"  [{DIM}]{num}[/{DIM}]  {segment.format_time_range()}  [{DIM}]{preview}[/{DIM}]")
     console.print()
 
 
-def display_segment_detail(session: TutorialSession, segment_num: int, console: Console) -> None:
-    """Display details for a specific segment."""
-    # Convert to 0-based index
+def show_segment_detail(session: TutorialSession, segment_num: int, console: Console) -> None:
+    """Display a specific segment."""
     index = segment_num - 1
 
     if index < 0 or index >= len(session.segments):
-        console.print(f"[red]Invalid segment number. Please use 1-{len(session.segments)}[/red]\n")
+        console.print(f"[{DIM}]1-{len(session.segments)}[/{DIM}]")
         return
 
     segment = session.segments[index]
-    console.print(
-        Panel(
-            segment.transcript,
-            title=f"[bold]Segment {segment_num}: {segment.format_time_range()}[/bold]",
-            border_style="blue",
-        )
-    )
     console.print()
+    console.print(Panel(
+        segment.transcript,
+        title=f"[{DIM}]Section {segment_num} • {segment.format_time_range()}[/{DIM}]",
+        border_style=DIM,
+        padding=(1, 2),
+    ))
 
 
 def run_freeform_mode(
@@ -72,76 +56,59 @@ def run_freeform_mode(
     claude_client: ClaudeClient,
     console: Console,
 ) -> None:
-    """
-    Run the freeform Q&A mode.
-
-    Args:
-        session: The current tutorial session
-        claude_client: The Claude API client
-        console: Rich console for output
-    """
-    console.print("\n[bold]Freeform Q&A Mode[/bold]")
-    console.print("Ask any question about the tutorial. Type [green]/help[/green] for commands.\n")
+    """Run freeform Q&A mode."""
+    console.print(f"[{DIM}]ask anything about the tutorial • /h for help[/{DIM}]")
+    console.print()
 
     while True:
         try:
-            # Get user input
-            user_input = console.input("[bold cyan]You:[/bold cyan] ").strip()
+            user_input = console.input(f"[bold]❯[/bold] ").strip()
         except (KeyboardInterrupt, EOFError):
-            console.print("\n\n[yellow]Goodbye![/yellow]\n")
+            console.print(f"\n[{DIM}]bye[/{DIM}]\n")
             break
 
         if not user_input:
             continue
 
-        # Handle commands
+        # Commands
         if user_input.startswith("/"):
-            command = user_input.lower().split()[0]
-            args = user_input.split()[1:] if len(user_input.split()) > 1 else []
+            parts = user_input.lower().split()
+            cmd = parts[0]
+            args = parts[1:] if len(parts) > 1 else []
 
-            if command in ("/quit", "/q"):
-                console.print("\n[yellow]Goodbye![/yellow]\n")
+            if cmd in ("/q", "/quit"):
+                console.print(f"\n[{DIM}]bye[/{DIM}]\n")
                 break
 
-            elif command in ("/help", "/h"):
-                display_help(console)
+            elif cmd in ("/h", "/help", "/?"):
+                show_help(console)
 
-            elif command in ("/segments", "/s"):
-                display_segments(session, console)
-
-            elif command == "/segment":
+            elif cmd in ("/s", "/segments"):
                 if args:
                     try:
-                        segment_num = int(args[0])
-                        display_segment_detail(session, segment_num, console)
+                        show_segment_detail(session, int(args[0]), console)
                     except ValueError:
-                        console.print("[red]Please provide a valid segment number[/red]\n")
+                        console.print(f"[{DIM}]/s <number>[/{DIM}]")
                 else:
-                    console.print("[red]Usage: /segment <number>[/red]\n")
+                    show_segments(session, console)
 
-            elif command == "/clear":
+            elif cmd == "/clear":
                 claude_client.clear_history()
-                console.print("[green]Conversation history cleared.[/green]\n")
+                console.print(f"[{DIM}]cleared[/{DIM}]")
 
             else:
-                console.print(f"[red]Unknown command: {command}[/red]")
-                console.print("Type [green]/help[/green] for available commands.\n")
+                console.print(f"[{DIM}]/h for help[/{DIM}]")
 
             continue
 
-        # Send question to Claude
+        # Ask Claude
         console.print()
-        console.print("[bold magenta]Assistant:[/bold magenta]")
-
         try:
-            # Stream the response with live update
             full_response = ""
             with Live(Markdown(""), console=console, refresh_per_second=10) as live:
                 for chunk in claude_client.ask(user_input, session):
                     full_response += chunk
                     live.update(Markdown(full_response))
-
-            console.print()  # Add spacing after response
-
+            console.print()
         except Exception as e:
-            console.print(f"[red]Error communicating with Claude: {e}[/red]\n")
+            console.print(f"[red]Error: {e}[/red]\n")

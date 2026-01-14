@@ -4,38 +4,37 @@ from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.table import Table
+from rich.rule import Rule
 
 from ..claude_client import ClaudeClient
 from ..models import TutorialSession
 
+# Color palette
+ACCENT = "#6366f1"  # Indigo
+DIM = "#6b7280"     # Gray
 
 # Cache for processed segment instructions
 _segment_cache: dict[int, str] = {}
 
 
-def display_step_help(console: Console) -> None:
-    """Display available commands."""
-    console.print("\n[bold]Commands:[/bold]")
-    console.print("  [green]/next[/green], [green]/n[/green]      - Continue to next section")
-    console.print("  [green]/back[/green], [green]/b[/green]      - Go back to previous section")
-    console.print("  [green]/overview[/green], [green]/o[/green]  - Show tutorial overview")
-    console.print("  [green]/jump <n>[/green]      - Jump to section n")
-    console.print("  [green]/raw[/green]           - Show raw transcript for current section")
-    console.print("  [green]/quit[/green], [green]/q[/green]      - Exit")
-    console.print("\n  [dim]Or just type a question to ask about this section[/dim]\n")
+def show_help(console: Console) -> None:
+    """Display compact help."""
+    console.print()
+    console.print(f"[{DIM}]navigation[/{DIM}]  [bold]/n[/bold] next  [bold]/b[/bold] back  [bold]/j N[/bold] jump  [bold]/o[/bold] overview")
+    console.print(f"[{DIM}]other[/{DIM}]       [bold]/raw[/bold] transcript  [bold]/q[/bold] quit")
+    console.print(f"[{DIM}]or just type a question[/{DIM}]")
+    console.print()
 
 
-def display_overview(session: TutorialSession, console: Console) -> None:
-    """Display tutorial overview with sections."""
-    console.print(f"\n[bold]Tutorial Overview[/bold] ({session.format_duration()} total)\n")
-
+def show_overview(session: TutorialSession, console: Console) -> None:
+    """Display compact section overview."""
+    console.print()
     for segment in session.segments:
         is_current = segment.index == session.current_segment_idx
-        marker = "[cyan]>[/cyan]" if is_current else " "
-        style = "cyan" if is_current else "dim"
-        console.print(f"  {marker} [{style}]Section {segment.index + 1}[/{style}] {segment.format_time_range()}")
-
+        marker = "▸" if is_current else " "
+        style = f"bold {ACCENT}" if is_current else DIM
+        num = f"{segment.index + 1}".rjust(2)
+        console.print(f"  {marker} [{style}]{num}[/{style}]  {segment.format_time_range()}")
     console.print()
 
 
@@ -44,33 +43,39 @@ def show_welcome(
     claude_client: ClaudeClient,
     console: Console,
 ) -> None:
-    """Show a warm welcome and tutorial introduction."""
-    console.print()
+    """Show brief AI-generated welcome."""
+    welcome_prompt = f"""You're a coding teacher. Write a ONE sentence welcome (under 20 words) that mentions what this tutorial teaches. Be warm but brief.
 
-    welcome_prompt = f"""You are a friendly coding teacher welcoming a student to a tutorial.
-
-Based on this tutorial transcript, write a brief welcome (3-4 sentences max):
-1. Greet them warmly
-2. Tell them what they'll learn in this tutorial
-3. Mention roughly how long it is ({session.format_duration()}) and that it's broken into {len(session.segments)} sections
-4. End with an encouraging "Let's get started!" or similar
-
-Keep it concise and friendly. Don't use headers or bullet points - just natural sentences.
-
-Transcript preview (first section):
-{session.segments[0].transcript[:1500] if session.segments else "No transcript available"}"""
+Based on: {session.segments[0].transcript[:1000] if session.segments else "coding tutorial"}"""
 
     try:
         full_response = ""
-        with Live(Markdown(""), console=console, refresh_per_second=10) as live:
+        with Live("", console=console, refresh_per_second=10, transient=True) as live:
             for chunk in claude_client.ask(welcome_prompt, session):
                 full_response += chunk
-                live.update(Markdown(full_response))
+                live.update(f"[{DIM}]{full_response}[/{DIM}]")
+        console.print(f"[{DIM}]{full_response.strip()}[/{DIM}]")
         console.print()
-    except Exception as e:
-        # Fallback welcome if Claude fails
-        console.print(f"Welcome! This tutorial is {session.format_duration()} long, broken into {len(session.segments)} sections.")
-        console.print("Type [green]/help[/green] for commands, or just ask questions as you go.\n")
+    except Exception:
+        pass  # Skip welcome on error
+
+
+def show_section_header(session: TutorialSession, console: Console) -> None:
+    """Show minimal section header."""
+    segment = session.current_segment
+    if not segment:
+        return
+
+    total = len(session.segments)
+    console.print()
+    console.print(
+        Rule(
+            f"[bold]Section {segment.index + 1}[/bold] [dim]of {total}[/dim]  •  {segment.format_time_range()}",
+            style=ACCENT,
+            align="left",
+        )
+    )
+    console.print()
 
 
 def teach_segment(
@@ -79,39 +84,28 @@ def teach_segment(
     console: Console,
     use_cache: bool = True,
 ) -> None:
-    """Have Claude teach the current segment as step-by-step instructions."""
+    """Have Claude teach the current segment."""
     segment = session.current_segment
     if not segment:
-        console.print("[red]No section available[/red]\n")
         return
 
-    total = len(session.segments)
-
-    # Header
-    console.print(f"\n[bold cyan]Section {segment.index + 1} of {total}[/bold cyan] [dim]({segment.format_time_range()})[/dim]\n")
+    show_section_header(session, console)
 
     # Check cache
     if use_cache and segment.index in _segment_cache:
         console.print(Markdown(_segment_cache[segment.index]))
-        _show_nav_hint(session, console)
         return
 
-    teach_prompt = f"""You are a patient coding teacher guiding a student through a tutorial step by step.
-
-For this section of the tutorial ({segment.format_time_range()}), break down what the instructor is teaching into clear, actionable steps.
+    teach_prompt = f"""Break down this tutorial section into 3-5 clear steps. Be concise.
 
 Guidelines:
-- Use numbered steps (1, 2, 3...)
-- Each step should be something concrete the student can DO
-- Include any code snippets the instructor mentions (use markdown code blocks)
-- Keep explanations brief but clear
-- If there are gotchas or tips mentioned, include them
-- End with what they should have accomplished by the end of this section
+- Numbered steps (1, 2, 3)
+- Include code snippets in markdown
+- Skip filler, focus on actions
+- End with what they should have working
 
-Section transcript:
-{segment.transcript}
-
-Write the step-by-step breakdown now:"""
+Transcript:
+{segment.transcript}"""
 
     try:
         full_response = ""
@@ -120,27 +114,10 @@ Write the step-by-step breakdown now:"""
                 full_response += chunk
                 live.update(Markdown(full_response))
 
-        # Cache the response
         _segment_cache[segment.index] = full_response
-        console.print()
 
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]\n")
-        return
-
-    _show_nav_hint(session, console)
-
-
-def _show_nav_hint(session: TutorialSession, console: Console) -> None:
-    """Show navigation hint."""
-    hints = []
-    if session.current_segment_idx > 0:
-        hints.append("[dim]/back[/dim]")
-    if session.current_segment_idx < len(session.segments) - 1:
-        hints.append("[dim]/next[/dim]")
-
-    if hints:
-        console.print(f"\n{' | '.join(hints)}\n")
+        console.print(f"[red]Error: {e}[/red]")
 
 
 def run_step_through_mode(
@@ -148,65 +125,63 @@ def run_step_through_mode(
     claude_client: ClaudeClient,
     console: Console,
 ) -> None:
-    """
-    Run step-through mode - guided segment-by-segment learning.
-    """
+    """Run step-through mode."""
     global _segment_cache
-    _segment_cache = {}  # Clear cache for new session
+    _segment_cache = {}
 
-    # Clear Claude's conversation history for fresh context
     claude_client.clear_history()
 
-    # Welcome the user
+    # Brief welcome
     show_welcome(session, claude_client, console)
 
-    # Teach the first segment
+    # Teach first segment
     teach_segment(session, claude_client, console)
 
     while True:
         try:
-            segment_num = session.current_segment_idx + 1
+            # Minimal prompt with position indicator
+            seg = session.current_segment_idx + 1
             total = len(session.segments)
-            user_input = console.input(f"[bold cyan][{segment_num}/{total}][/bold cyan] ").strip()
+            prompt = f"\n[{ACCENT}]{seg}/{total}[/{ACCENT}] [bold]❯[/bold] "
+            user_input = console.input(prompt).strip()
         except (KeyboardInterrupt, EOFError):
-            console.print("\n\n[dim]Happy coding![/dim]\n")
+            console.print(f"\n[{DIM}]bye[/{DIM}]\n")
             break
 
         if not user_input:
             continue
 
-        # Handle commands
+        # Commands
         if user_input.startswith("/"):
-            parts = user_input.lower().split()
-            command = parts[0]
-            args = parts[1:] if len(parts) > 1 else []
+            cmd = user_input.lower().split()
+            c = cmd[0]
+            args = cmd[1:] if len(cmd) > 1 else []
 
-            if command in ("/quit", "/q"):
-                console.print("\n[dim]Happy coding![/dim]\n")
+            if c in ("/q", "/quit"):
+                console.print(f"\n[{DIM}]bye[/{DIM}]\n")
                 break
 
-            elif command in ("/help", "/h"):
-                display_step_help(console)
+            elif c in ("/h", "/help", "/?"):
+                show_help(console)
 
-            elif command in ("/next", "/n"):
+            elif c in ("/n", "/next"):
                 if session.current_segment_idx < len(session.segments) - 1:
                     session.current_segment_idx += 1
                     teach_segment(session, claude_client, console)
                 else:
-                    console.print("\n[green]You've reached the end of the tutorial![/green]")
-                    console.print("[dim]Use /back to review, or /quit to exit.[/dim]\n")
+                    console.print(f"\n[{DIM}]end of tutorial — /b to go back[/{DIM}]\n")
 
-            elif command in ("/back", "/b", "/prev"):
+            elif c in ("/b", "/back", "/p", "/prev"):
                 if session.current_segment_idx > 0:
                     session.current_segment_idx -= 1
                     teach_segment(session, claude_client, console)
                 else:
-                    console.print("\n[dim]You're at the beginning.[/dim]\n")
+                    console.print(f"\n[{DIM}]already at start[/{DIM}]\n")
 
-            elif command in ("/overview", "/o", "/segments", "/s"):
-                display_overview(session, console)
+            elif c in ("/o", "/overview", "/s", "/sections"):
+                show_overview(session, console)
 
-            elif command == "/jump":
+            elif c in ("/j", "/jump"):
                 if args:
                     try:
                         target = int(args[0])
@@ -214,37 +189,35 @@ def run_step_through_mode(
                             session.current_segment_idx = target - 1
                             teach_segment(session, claude_client, console)
                         else:
-                            console.print(f"[red]Section must be between 1 and {len(session.segments)}[/red]\n")
+                            console.print(f"[{DIM}]1-{len(session.segments)}[/{DIM}]")
                     except ValueError:
-                        console.print("[red]Usage: /jump <section_number>[/red]\n")
+                        console.print(f"[{DIM}]/j <number>[/{DIM}]")
                 else:
-                    console.print("[red]Usage: /jump <section_number>[/red]\n")
+                    console.print(f"[{DIM}]/j <number>[/{DIM}]")
 
-            elif command == "/raw":
+            elif c == "/raw":
                 segment = session.current_segment
                 if segment:
+                    console.print()
                     console.print(Panel(
                         segment.transcript,
-                        title=f"[dim]Raw transcript - Section {segment.index + 1}[/dim]",
-                        border_style="dim",
+                        border_style=DIM,
+                        padding=(1, 2),
                     ))
-                    console.print()
 
             else:
-                console.print(f"[dim]Unknown command. Type /help for options.[/dim]\n")
+                console.print(f"[{DIM}]/h for help[/{DIM}]")
 
             continue
 
-        # Non-command: ask a question about current segment
+        # Question about current segment
         segment = session.current_segment
         if not segment:
             continue
 
-        question_prompt = f"""The student is on Section {segment.index + 1} ({segment.format_time_range()}) and has a question.
+        question_prompt = f"""Answer this question about Section {segment.index + 1}. Be concise and helpful.
 
-Answer helpfully and concisely, like a patient teacher. If they're asking about code, include examples.
-
-Their question: {user_input}"""
+Question: {user_input}"""
 
         console.print()
         try:
@@ -253,6 +226,5 @@ Their question: {user_input}"""
                 for chunk in claude_client.ask(question_prompt, session):
                     full_response += chunk
                     live.update(Markdown(full_response))
-            console.print()
         except Exception as e:
-            console.print(f"[red]Error: {e}[/red]\n")
+            console.print(f"[red]Error: {e}[/red]")

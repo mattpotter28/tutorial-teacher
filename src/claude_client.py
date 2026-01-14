@@ -30,7 +30,8 @@ class ClaudeClient:
 
     def _build_system_prompt(self, session: TutorialSession) -> str:
         """Build the system prompt with tutorial context."""
-        return f"""You are a helpful coding tutorial assistant. You're helping a developer follow along with a YouTube coding tutorial.
+        # Base prompt
+        prompt = f"""You are a helpful coding tutorial assistant. You're helping a developer follow along with a YouTube coding tutorial.
 
 ## Tutorial Information
 - **Video URL**: {session.video_url}
@@ -44,7 +45,23 @@ The complete tutorial transcript is provided below. Use this to answer questions
 <transcript>
 {session.full_transcript}
 </transcript>
+"""
 
+        # Add repo context if available
+        if session.repo_context:
+            prompt += f"""
+## Repository Code
+The tutorial references this GitHub repository: {session.repo_url}
+
+Use this code to provide more accurate answers about the implementation details.
+
+<repository>
+{session.repo_context}
+</repository>
+"""
+
+        # Add role and guidelines
+        prompt += """
 ## Your Role
 1. Answer questions about the tutorial content clearly and concisely
 2. Help explain code concepts mentioned in the tutorial
@@ -58,6 +75,8 @@ The complete tutorial transcript is provided below. Use this to answer questions
 - Reference specific timestamps when relevant (e.g., "At 5:30, the instructor mentions...")
 - If something isn't covered in the transcript, say so honestly
 - Focus on being practical and helping the user make progress"""
+
+        return prompt
 
     def ask(
         self,

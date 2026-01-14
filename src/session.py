@@ -1,6 +1,7 @@
 """Session management for Tutorial Teacher."""
 
 from .models import SessionMode, TutorialSession
+from .repo_fetcher import RepoFetchError, fetch_repo_context
 from .segmenter import segment_transcript
 from .transcript import (
     TranscriptError,
@@ -21,6 +22,7 @@ class SessionManager:
         video_url: str,
         mode: SessionMode = SessionMode.FREEFORM,
         segment_duration: int = 300,
+        repo_url: str | None = None,
     ) -> TutorialSession:
         """
         Create a new tutorial session from a YouTube URL.
@@ -29,12 +31,14 @@ class SessionManager:
             video_url: YouTube video URL
             mode: Session mode (freeform or step-through)
             segment_duration: Duration of each segment in seconds
+            repo_url: Optional GitHub repository URL for code context
 
         Returns:
             A new TutorialSession
 
         Raises:
             TranscriptError: If transcript cannot be fetched
+            RepoFetchError: If repository cannot be fetched
         """
         # Extract video ID
         video_id = extract_video_id(video_url)
@@ -48,6 +52,11 @@ class SessionManager:
         # Create segments
         segments = segment_transcript(entries, segment_duration)
 
+        # Fetch repo context if provided
+        repo_context = ""
+        if repo_url:
+            repo_context = fetch_repo_context(repo_url)
+
         # Create session
         # For now, use a placeholder title (could fetch from YouTube API later)
         title = f"Tutorial ({video_id})"
@@ -60,6 +69,8 @@ class SessionManager:
             current_segment_idx=0,
             mode=mode,
             full_transcript=full_transcript,
+            repo_url=repo_url,
+            repo_context=repo_context,
         )
 
         self.current_session = session

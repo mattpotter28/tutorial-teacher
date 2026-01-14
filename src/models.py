@@ -69,6 +69,8 @@ class TutorialSession:
     current_segment_idx: int = 0
     mode: SessionMode = SessionMode.FREEFORM
     full_transcript: str = ""  # Complete transcript for context
+    repo_url: str | None = None  # GitHub repo URL if provided
+    repo_context: str = ""  # Fetched repo content for Claude
 
     @property
     def current_segment(self) -> TutorialSegment | None:

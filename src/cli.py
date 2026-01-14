@@ -13,6 +13,7 @@ from rich.text import Text
 from .claude_client import ClaudeClient
 from .models import SessionMode
 from .modes.freeform import run_freeform_mode
+from .repo_fetcher import RepoFetchError
 from .session import SessionManager
 from .transcript import TranscriptError
 
@@ -43,7 +44,7 @@ def main(
         None,
         "--repo",
         "-r",
-        help="GitHub repository URL for code context (not yet implemented)",
+        help="GitHub repository URL for code context",
     ),
     mode: ModeChoice = typer.Option(
         ModeChoice.FREE,
@@ -75,28 +76,29 @@ def main(
         )
         raise typer.Exit(1)
 
-    # Warn about repo option
-    if repo:
-        console.print(
-            "[yellow]Note:[/yellow] GitHub repo integration is not yet implemented. "
-            "Continuing without repo context.\n"
-        )
-
     # Create session
     console.print(f"\n[bold blue]Tutorial Teacher[/bold blue]\n")
-    console.print(f"Loading tutorial from: [cyan]{youtube_url}[/cyan]\n")
+    console.print(f"Loading tutorial from: [cyan]{youtube_url}[/cyan]")
+    if repo:
+        console.print(f"With repo context: [cyan]{repo}[/cyan]")
+    console.print()
 
     session_manager = SessionManager()
     session_mode = SessionMode.FREEFORM if mode == ModeChoice.FREE else SessionMode.STEP_THROUGH
 
+    # Fetch transcript
     with console.status("[bold green]Fetching transcript..."):
         try:
             session = session_manager.create_session(
                 video_url=youtube_url,
                 mode=session_mode,
+                repo_url=repo,
             )
         except TranscriptError as e:
             console.print(f"\n[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+        except RepoFetchError as e:
+            console.print(f"\n[red]Repo Error:[/red] {e}")
             raise typer.Exit(1)
 
     # Display session info
@@ -126,6 +128,11 @@ def display_session_info(session) -> None:
     info_text.append(f"{session.format_duration()}\n")
     info_text.append("Segments: ", style="bold")
     info_text.append(f"{len(session.segments)}")
+
+    if session.repo_url:
+        info_text.append("\n")
+        info_text.append("Repo: ", style="bold")
+        info_text.append(f"{session.repo_url}")
 
     console.print(
         Panel(

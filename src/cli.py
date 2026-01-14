@@ -113,11 +113,8 @@ def main(
     if session_mode == SessionMode.FREEFORM:
         run_freeform_mode(session, claude_client, console)
     else:
-        console.print(
-            "\n[yellow]Note:[/yellow] Step-through mode is not yet implemented. "
-            "Starting freeform mode instead.\n"
-        )
-        run_freeform_mode(session, claude_client, console)
+        from .modes.step_through import run_step_through_mode
+        run_step_through_mode(session, claude_client, console)
 
 
 def display_session_info(session) -> None:

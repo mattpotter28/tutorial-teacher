@@ -1,5 +1,6 @@
 """Session management for Tutorial Teacher."""
 
+from .cache import get_cache
 from .models import SessionMode, TutorialSession
 from .repo_fetcher import RepoFetchError, fetch_repo_context
 from .segmenter import segment_transcript
@@ -42,9 +43,15 @@ class SessionManager:
         """
         # Extract video ID
         video_id = extract_video_id(video_url)
+        cache = get_cache()
 
-        # Fetch transcript
-        entries = fetch_transcript(video_url)
+        # Try to get transcript from cache first
+        entries = cache.get_transcript(video_id)
+        if entries is None:
+            # Fetch from YouTube
+            entries = fetch_transcript(video_url)
+            # Cache for next time
+            cache.save_transcript(video_id, entries)
 
         # Get full transcript text
         full_transcript = get_full_transcript_text(entries)
@@ -52,10 +59,13 @@ class SessionManager:
         # Create segments
         segments = segment_transcript(entries, segment_duration)
 
-        # Fetch repo context if provided
+        # Fetch repo context if provided (check cache first)
         repo_context = ""
         if repo_url:
-            repo_context = fetch_repo_context(repo_url)
+            repo_context = cache.get_repo_context(repo_url) or ""
+            if not repo_context:
+                repo_context = fetch_repo_context(repo_url)
+                cache.save_repo_context(repo_url, repo_context)
 
         # Create session
         # For now, use a placeholder title (could fetch from YouTube API later)
@@ -75,51 +85,3 @@ class SessionManager:
 
         self.current_session = session
         return session
-
-    def next_segment(self) -> bool:
-        """
-        Move to the next segment.
-
-        Returns:
-            True if moved to next segment, False if already at end
-        """
-        if not self.current_session:
-            return False
-
-        if self.current_session.current_segment_idx < len(self.current_session.segments) - 1:
-            self.current_session.current_segment_idx += 1
-            return True
-        return False
-
-    def previous_segment(self) -> bool:
-        """
-        Move to the previous segment.
-
-        Returns:
-            True if moved to previous segment, False if already at start
-        """
-        if not self.current_session:
-            return False
-
-        if self.current_session.current_segment_idx > 0:
-            self.current_session.current_segment_idx -= 1
-            return True
-        return False
-
-    def go_to_segment(self, index: int) -> bool:
-        """
-        Jump to a specific segment.
-
-        Args:
-            index: 0-based segment index
-
-        Returns:
-            True if jumped to segment, False if index out of range
-        """
-        if not self.current_session:
-            return False
-
-        if 0 <= index < len(self.current_session.segments):
-            self.current_session.current_segment_idx = index
-            return True
-        return False

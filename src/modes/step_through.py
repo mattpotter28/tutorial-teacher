@@ -6,22 +6,17 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.rule import Rule
 
+from ..cache import get_cache
 from ..claude_client import ClaudeClient
 from ..models import TutorialSession
-
-# Color palette
-ACCENT = "#6366f1"  # Indigo
-DIM = "#6b7280"     # Gray
-
-# Cache for processed segment instructions
-_segment_cache: dict[int, str] = {}
+from ..utils import ACCENT, DIM
 
 
 def show_help(console: Console) -> None:
     """Display compact help."""
     console.print()
     console.print(f"[{DIM}]navigation[/{DIM}]  [bold]/n[/bold] next  [bold]/b[/bold] back  [bold]/j N[/bold] jump  [bold]/o[/bold] overview")
-    console.print(f"[{DIM}]other[/{DIM}]       [bold]/raw[/bold] transcript  [bold]/q[/bold] quit")
+    console.print(f"[{DIM}]other[/{DIM}]       [bold]/raw[/bold] transcript  [bold]/mode[/bold] switch  [bold]/q[/bold] quit")
     console.print(f"[{DIM}]or just type a question[/{DIM}]")
     console.print()
 
@@ -91,10 +86,14 @@ def teach_segment(
 
     show_section_header(session, console)
 
-    # Check cache
-    if use_cache and segment.index in _segment_cache:
-        console.print(Markdown(_segment_cache[segment.index]))
-        return
+    cache = get_cache()
+
+    # Check disk cache first
+    if use_cache:
+        cached = cache.get_segment_breakdown(session.video_id, segment.index)
+        if cached:
+            console.print(Markdown(cached))
+            return
 
     teach_prompt = f"""Break down this tutorial section into 3-5 clear steps. Be concise.
 
@@ -114,7 +113,8 @@ Transcript:
                 full_response += chunk
                 live.update(Markdown(full_response))
 
-        _segment_cache[segment.index] = full_response
+        # Save to disk cache
+        cache.save_segment_breakdown(session.video_id, segment.index, full_response)
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -124,11 +124,8 @@ def run_step_through_mode(
     session: TutorialSession,
     claude_client: ClaudeClient,
     console: Console,
-) -> None:
-    """Run step-through mode."""
-    global _segment_cache
-    _segment_cache = {}
-
+) -> str:
+    """Run step-through mode. Returns 'quit' or 'switch'."""
     claude_client.clear_history()
 
     # Brief welcome
@@ -146,7 +143,7 @@ def run_step_through_mode(
             user_input = console.input(prompt).strip()
         except (KeyboardInterrupt, EOFError):
             console.print(f"\n[{DIM}]bye[/{DIM}]\n")
-            break
+            return "quit"
 
         if not user_input:
             continue
@@ -159,7 +156,11 @@ def run_step_through_mode(
 
             if c in ("/q", "/quit"):
                 console.print(f"\n[{DIM}]bye[/{DIM}]\n")
-                break
+                return "quit"
+
+            elif c in ("/m", "/mode"):
+                console.print(f"\n[{DIM}]switching to freeform mode...[/{DIM}]\n")
+                return "switch"
 
             elif c in ("/h", "/help", "/?"):
                 show_help(console)
@@ -228,3 +229,5 @@ Question: {user_input}"""
                     live.update(Markdown(full_response))
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]")
+
+    return "quit"

@@ -122,17 +122,3 @@ Use this code to provide more accurate answers about the implementation details.
     def clear_history(self) -> None:
         """Clear the conversation history."""
         self.conversation_history = []
-
-    def ask_sync(self, question: str, session: TutorialSession) -> str:
-        """
-        Ask a question and get the complete response (non-streaming).
-
-        Args:
-            question: The user's question
-            session: The current tutorial session
-
-        Returns:
-            The complete response text
-        """
-        chunks = list(self.ask(question, session))
-        return "".join(chunks)

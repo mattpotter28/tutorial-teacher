@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .utils import format_timestamp, format_time_range
+
 
 class SessionMode(Enum):
     """Tutorial session modes."""
@@ -22,14 +24,9 @@ class TranscriptEntry:
         """End time in seconds."""
         return self.start + self.duration
 
-    def format_timestamp(self) -> str:
+    def format_start_time(self) -> str:
         """Format start time as MM:SS or HH:MM:SS."""
-        total_seconds = int(self.start)
-        hours, remainder = divmod(total_seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        if hours > 0:
-            return f"{hours}:{minutes:02d}:{seconds:02d}"
-        return f"{minutes}:{seconds:02d}"
+        return format_timestamp(self.start)
 
 
 @dataclass
@@ -44,14 +41,7 @@ class TutorialSegment:
 
     def format_time_range(self) -> str:
         """Format the time range as a string."""
-        def fmt(seconds: float) -> str:
-            total = int(seconds)
-            h, r = divmod(total, 3600)
-            m, s = divmod(r, 60)
-            if h > 0:
-                return f"{h}:{m:02d}:{s:02d}"
-            return f"{m}:{s:02d}"
-        return f"{fmt(self.start_time)} - {fmt(self.end_time)}"
+        return format_time_range(self.start_time, self.end_time)
 
     @property
     def duration(self) -> float:
@@ -88,9 +78,4 @@ class TutorialSession:
 
     def format_duration(self) -> str:
         """Format total duration as a string."""
-        total = int(self.total_duration)
-        h, r = divmod(total, 3600)
-        m, s = divmod(r, 60)
-        if h > 0:
-            return f"{h}:{m:02d}:{s:02d}"
-        return f"{m}:{s:02d}"
+        return format_timestamp(self.total_duration)

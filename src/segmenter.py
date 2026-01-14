@@ -1,16 +1,7 @@
 """Transcript segmentation functionality."""
 
 from .models import TranscriptEntry, TutorialSegment
-
-
-def format_timestamp(seconds: float) -> str:
-    """Format seconds as MM:SS or HH:MM:SS."""
-    total = int(seconds)
-    h, r = divmod(total, 3600)
-    m, s = divmod(r, 60)
-    if h > 0:
-        return f"{h}:{m:02d}:{s:02d}"
-    return f"{m}:{s:02d}"
+from .utils import format_timestamp
 
 
 def segment_transcript(

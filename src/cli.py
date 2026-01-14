@@ -16,6 +16,7 @@ from .modes.freeform import run_freeform_mode
 from .repo_fetcher import RepoFetchError
 from .session import SessionManager
 from .transcript import TranscriptError
+from .utils import ACCENT, DIM
 
 # Load environment variables from .env file
 load_dotenv()
@@ -26,11 +27,6 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
-
-# Color palette - muted, professional
-ACCENT = "#6366f1"  # Indigo
-DIM = "#6b7280"     # Gray
-SUCCESS = "#10b981" # Emerald
 
 
 class ModeChoice(str, Enum):
@@ -129,12 +125,24 @@ def main(
         console.print(f"[red]✗[/red] {e}")
         raise typer.Exit(1)
 
-    # Run the appropriate mode
-    if session_mode == SessionMode.FREEFORM:
-        run_freeform_mode(session, claude_client, console)
-    else:
-        from .modes.step_through import run_step_through_mode
-        run_step_through_mode(session, claude_client, console)
+    # Run the appropriate mode with switching support
+    from .modes.step_through import run_step_through_mode
+
+    current_mode = session_mode
+    while True:
+        if current_mode == SessionMode.FREEFORM:
+            result = run_freeform_mode(session, claude_client, console)
+        else:
+            result = run_step_through_mode(session, claude_client, console)
+
+        if result == "quit":
+            break
+        elif result == "switch":
+            # Toggle mode
+            if current_mode == SessionMode.FREEFORM:
+                current_mode = SessionMode.STEP_THROUGH
+            else:
+                current_mode = SessionMode.FREEFORM
 
 
 if __name__ == "__main__":

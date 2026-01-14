@@ -7,16 +7,13 @@ from rich.panel import Panel
 
 from ..claude_client import ClaudeClient
 from ..models import TutorialSession
-
-# Color palette
-ACCENT = "#6366f1"  # Indigo
-DIM = "#6b7280"     # Gray
+from ..utils import ACCENT, DIM
 
 
 def show_help(console: Console) -> None:
     """Display compact help."""
     console.print()
-    console.print(f"[{DIM}]commands[/{DIM}]   [bold]/s[/bold] segments  [bold]/s N[/bold] show segment  [bold]/clear[/bold] reset  [bold]/q[/bold] quit")
+    console.print(f"[{DIM}]commands[/{DIM}]   [bold]/s[/bold] segments  [bold]/s N[/bold] show segment  [bold]/clear[/bold] reset  [bold]/mode[/bold] switch  [bold]/q[/bold] quit")
     console.print(f"[{DIM}]or just type a question about the tutorial[/{DIM}]")
     console.print()
 
@@ -55,9 +52,9 @@ def run_freeform_mode(
     session: TutorialSession,
     claude_client: ClaudeClient,
     console: Console,
-) -> None:
-    """Run freeform Q&A mode."""
-    console.print(f"[{DIM}]ask anything about the tutorial • /h for help[/{DIM}]")
+) -> str:
+    """Run freeform Q&A mode. Returns 'quit' or 'switch'."""
+    console.print(f"[{DIM}]freeform mode • ask anything • /h for help[/{DIM}]")
     console.print()
 
     while True:
@@ -65,7 +62,7 @@ def run_freeform_mode(
             user_input = console.input(f"[bold]❯[/bold] ").strip()
         except (KeyboardInterrupt, EOFError):
             console.print(f"\n[{DIM}]bye[/{DIM}]\n")
-            break
+            return "quit"
 
         if not user_input:
             continue
@@ -78,7 +75,11 @@ def run_freeform_mode(
 
             if cmd in ("/q", "/quit"):
                 console.print(f"\n[{DIM}]bye[/{DIM}]\n")
-                break
+                return "quit"
+
+            elif cmd in ("/m", "/mode"):
+                console.print(f"\n[{DIM}]switching to step-through mode...[/{DIM}]\n")
+                return "switch"
 
             elif cmd in ("/h", "/help", "/?"):
                 show_help(console)
@@ -112,3 +113,5 @@ def run_freeform_mode(
             console.print()
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]\n")
+
+    return "quit"
